@@ -20,7 +20,7 @@ namespace eventqueue
 
         public int CompareTo(EventTimePair other)
         {
-            return (other.Time - this.Time).Milliseconds;
+            return (this.Time - other.Time).Milliseconds;
         }
 
         int IComparable.CompareTo(object obj)
@@ -33,9 +33,9 @@ namespace eventqueue
     {
         public EventQueue()
         {
-            timer = new Timer(Callback, set, Timeout.Infinite, Timeout.Infinite);
             set = new SortedSet<EventTimePair>();
             removedEvents = new SortedSet<Guid>();
+            timer = new Timer(Callback, set, Timeout.Infinite, Timeout.Infinite);
         }
 
         private Timer timer;
@@ -47,11 +47,11 @@ namespace eventqueue
             if (action == null) throw new ArgumentNullException(nameof(action));
             if (time < DateTime.Now) throw new ArgumentException("time can not be before now", nameof(time));
             Guid g = Guid.NewGuid();
-            lock (set) set.Add(new EventTimePair(action, state, time, g));
-            if (time < set.Min.Time)
+            if (set.Count == 0 || time < set.Min.Time)
             {
-                timer.Change((time - DateTime.Now).Milliseconds, Timeout.Infinite);
+                timer.Change((time - DateTime.Now), TimeSpan.FromMilliseconds(-1));
             }
+            lock (set) set.Add(new EventTimePair(action, state, time, g));
             return g;
         }
         public void RemoveEvent(Guid guid)
@@ -70,7 +70,10 @@ namespace eventqueue
             curr.Min.Action.Invoke(curr.Min.State);
             lock(curr) curr.Remove(curr.Min);
 
-            timer.Change((curr.Min.Time - DateTime.Now).Milliseconds, Timeout.Infinite);
+            if (curr.Count > 0)
+            {
+                timer.Change((curr.Min.Time - DateTime.Now), TimeSpan.FromMilliseconds(-1));
+            }
         }
     }
 }
