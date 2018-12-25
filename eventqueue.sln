@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27428.2043
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "eventqueue", "eventqueue\eventqueue.csproj", "{1240AD64-E796-4E46-8624-198C1A6483CC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1240AD64-E796-4E46-8624-198C1A6483CC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1240AD64-E796-4E46-8624-198C1A6483CC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1240AD64-E796-4E46-8624-198C1A6483CC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1240AD64-E796-4E46-8624-198C1A6483CC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3C6ABD7D-3E47-45B0-9C2E-392AD9E0AA0D}
+	EndGlobalSection
+EndGlobal
