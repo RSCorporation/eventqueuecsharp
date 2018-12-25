@@ -35,6 +35,7 @@ namespace eventqueue
         {
             timer = new Timer(Callback, set, Timeout.Infinite, Timeout.Infinite);
             set = new SortedSet<EventTimePair>();
+            removedEvents = new SortedSet<Guid>();
         }
 
         private Timer timer;
@@ -60,7 +61,11 @@ namespace eventqueue
         private void Callback(object state)
         {
             SortedSet<EventTimePair> curr = (SortedSet<EventTimePair>)state;
-            while (curr.Count > 0 && removedEvents.Contains(curr.Min.Guid)) curr.Remove(curr.Min);
+            while (curr.Count > 0 && removedEvents.Contains(curr.Min.Guid))
+            {
+                removedEvents.Remove(curr.Min.Guid);
+                curr.Remove(curr.Min);
+            }
             if (curr.Count == 0) return;
             curr.Min.Action.Invoke(curr.Min.State);
             lock(curr) curr.Remove(curr.Min);
