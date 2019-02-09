@@ -1,79 +1,101 @@
 ﻿using System;
-using System.Threading;
 using System.Collections.Generic;
-namespace eventqueue
+using System.Collections.Concurrent;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace DynNetLib.Util
 {
-    internal class EventTimePair : IComparable, IComparable<EventTimePair>
+    internal static class EventQueue
     {
-        internal EventTimePair(TimerCallback action, object state, DateTime time, Guid guid)
+        private class EventQueueEvent : IComparable<EventQueueEvent>
         {
-            this.Action = action ?? throw new ArgumentNullException(nameof(action));
-            this.Time = time;
-            this.State = state;
-            this.Guid = guid;
-        }
+            public readonly TimerCallback Action;
+            public readonly DateTime CallTime;
+            public readonly object State;
 
-        internal TimerCallback Action { get; }
-        internal DateTime Time { get; }
-        internal object State { get; }
-        internal Guid Guid { get; }
-
-        public int CompareTo(EventTimePair other)
-        {
-            return (this.Time - other.Time).Milliseconds;
-        }
-
-        int IComparable.CompareTo(object obj)
-        {
-            if (!(obj is EventTimePair)) throw new ArgumentException("Object can be only EventTimePair", nameof(obj));
-            return this.CompareTo((EventTimePair)obj);
-        }
-    }
-    public class EventQueue
-    {
-        public EventQueue()
-        {
-            set = new SortedSet<EventTimePair>();
-            removedEvents = new SortedSet<Guid>();
-            timer = new Timer(Callback, set, Timeout.Infinite, Timeout.Infinite);
-        }
-
-        private Timer timer;
-        private SortedSet<EventTimePair> set;
-        private SortedSet<Guid> removedEvents;
-        public Guid AddEvent(TimerCallback action, object state, DateTime time)
-        {
-            if (time == null) throw new ArgumentNullException(nameof(time));
-            if (action == null) throw new ArgumentNullException(nameof(action));
-            if (time < DateTime.Now) throw new ArgumentException("time can not be before now", nameof(time));
-            Guid g = Guid.NewGuid();
-            if (set.Count == 0 || time < set.Min.Time)
+            public EventQueueEvent(TimerCallback action, object state, DateTime callTime)
             {
-                timer.Change((time - DateTime.Now), TimeSpan.FromMilliseconds(-1));
+                Action = action;
+                CallTime = callTime;
+                State = state;
             }
-            lock (set) set.Add(new EventTimePair(action, state, time, g));
-            return g;
-        }
-        public void RemoveEvent(Guid guid)
-        {
-            removedEvents.Add(guid);
-        }
-        private void Callback(object state)
-        {
-            SortedSet<EventTimePair> curr = (SortedSet<EventTimePair>)state;
-            while (curr.Count > 0 && removedEvents.Contains(curr.Min.Guid))
-            {
-                removedEvents.Remove(curr.Min.Guid);
-                curr.Remove(curr.Min);
-            }
-            if (curr.Count == 0) return;
-            curr.Min.Action.Invoke(curr.Min.State);
-            lock(curr) curr.Remove(curr.Min);
 
-            if (curr.Count > 0)
+            public int CompareTo(EventQueueEvent other)
             {
-                timer.Change((curr.Min.Time - DateTime.Now), TimeSpan.FromMilliseconds(-1));
+                if (this == other)
+                    return 0;
+                return CallTime < other.CallTime ? -1 : 1;
             }
+        }
+
+        private static readonly Timer timer = new Timer(Callback);
+        private static readonly SortedSet<EventQueueEvent> events = new SortedSet<EventQueueEvent>();
+        private static readonly ConcurrentDictionary<Guid, EventQueueEvent> eventById = new ConcurrentDictionary<Guid, EventQueueEvent>();
+
+        public static Guid AddEvent(TimerCallback action, object state, DateTime time)
+        {
+            return AddEvent(action, state, time, Guid.NewGuid());
+        }
+
+        public static Guid AddEvent(TimerCallback action, object state, DateTime callTime, Guid newId)
+        {
+            var newEvent = new EventQueueEvent(action, state, callTime);
+            while (!eventById.TryAdd(newId, newEvent))
+                Thread.Sleep(1);
+            lock (events)
+            {
+                events.Add(newEvent);
+                timer.Change(ClampTimeSpan(events.Min.CallTime - DateTime.Now), Timeout.InfiniteTimeSpan);
+            }
+            return newId;
+        }
+
+        public static void RemoveEvent(Guid id)
+        {
+            if (!eventById.ContainsKey(id))
+                return;
+            EventQueueEvent idEvent;
+            while (!eventById.TryRemove(id, out idEvent)) Thread.Sleep(1);
+            lock (events)
+            {
+                events.Remove(idEvent);
+                timer.Change(events.Count > 0 ? ClampTimeSpan(events.Min.CallTime - DateTime.Now) : Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            }
+        }
+
+        private class InvokeStateObject
+        {
+            public TimerCallback TimerCallback;
+        }
+
+        private static TimeSpan ClampTimeSpan(TimeSpan original)
+        {
+            return original.TotalMilliseconds < 0 ? TimeSpan.Zero : original;
+        }
+
+        private static void Callback(object state)
+        {
+            EventQueueEvent minEvent;
+
+            lock (events)
+            {
+                minEvent = events.Min;
+                events.Remove(minEvent);
+                timer.Change(events.Count > 0 ? ClampTimeSpan(events.Min.CallTime - DateTime.Now) : Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            }
+
+            minEvent.Action.BeginInvoke(minEvent.State, ActionInvokeCallback, new InvokeStateObject
+            {
+                TimerCallback = minEvent.Action
+            });
+        }
+
+        private static void ActionInvokeCallback(IAsyncResult asyncResult)
+        {
+            ((InvokeStateObject)asyncResult.AsyncState).TimerCallback.EndInvoke(asyncResult);
         }
     }
 }
